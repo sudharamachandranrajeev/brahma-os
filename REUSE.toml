@@ -1,0 +1,13 @@
+version = 1
+
+[[annotations]]
+path = ["**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 The Brahma authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["image/shared/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2025 tulilirockz (bootcrew)"
+SPDX-License-Identifier = "Apache-2.0"

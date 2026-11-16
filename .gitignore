@@ -1,0 +1,7 @@
+build/
+*.img
+*.fd
+*.pid
+*.log
+*.tar
+cosign.key

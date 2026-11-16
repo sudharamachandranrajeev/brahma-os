@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+# Brahma OS Desktop image: Arch Linux + the CachyOS kernel, made bootable by bootc.
+# Based on bootcrew/mono arch/Containerfile (Apache-2.0); see NOTICE.
+# Build from the repo root:  scripts/build.sh
+
+ARG BOOTC_BUILDER=localhost/brahma-os-bootc:v1.17.4
+FROM ${BOOTC_BUILDER} AS bootc
+
+FROM docker.io/archlinux/archlinux:latest
+COPY --from=bootc /output /
+
+# Keep pacman state under /usr/lib/sysimage so it survives on an image-based system.
+RUN grep "= */var" /etc/pacman.conf | sed "/= *\/var/s/.*=// ; s/ //" | xargs -n1 sh -c 'mkdir -p "/usr/lib/sysimage/$(dirname $(echo $1 | sed "s@/var/@@"))" && mv -v "$1" "/usr/lib/sysimage/$(echo "$1" | sed "s@/var/@@")"' '' && \
+    sed -i -e "/= *\/var/ s/^#//" -e "s@= */var@= /usr/lib/sysimage@g" -e "/DownloadUser/d" /etc/pacman.conf
+
+# Rootless builds cannot give pacman's hook sandbox its own network namespace, so
+# hooks (sysusers, depmod) would be skipped. Off during the build, back on at the end.
+RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+
+# CachyOS repository (generic x86-64 packages, so it runs on every test laptop).
+ARG CACHYOS_KEY=F3B607488DB35A47
+ARG CACHYOS_REPO=https://mirror.cachyos.org/repo/x86_64/cachyos
+RUN pacman-key --init && pacman-key --populate archlinux && \
+    (pacman-key --recv-keys "${CACHYOS_KEY}" --keyserver hkps://keyserver.ubuntu.com || \
+     pacman-key --recv-keys "${CACHYOS_KEY}" --keyserver hkps://keys.openpgp.org) && \
+    pacman-key --lsign-key "${CACHYOS_KEY}" && \
+    pacman -U --noconfirm \
+      "${CACHYOS_REPO}/cachyos-keyring-20240331-1-any.pkg.tar.zst" \
+      "${CACHYOS_REPO}/cachyos-mirrorlist-27-1-any.pkg.tar.zst" && \
+    sed -i '/^\[core\]/i [cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist\n' /etc/pacman.conf
+
+RUN pacman -Syu --noconfirm && \
+    pacman -S --noconfirm base bubblewrap dracut linux-cachyos linux-firmware ostree \
+      btrfs-progs e2fsprogs xfsprogs dosfstools skopeo podman dbus dbus-glib glib2 shadow openssh && \
+    pacman -S --clean --noconfirm
+
+RUN systemctl enable systemd-networkd systemd-resolved systemd-timesyncd sshd && \
+    systemctl mask systemd-firstboot.service && \
+    echo "uninitialized" > /etc/machine-id && \
+    ln -sf /usr/share/zoneinfo/UTC /etc/localtime && \
+    printf '[Match]\nType=ether\n\n[Network]\nDHCP=yes\n' > /usr/lib/systemd/network/20-wired.network && \
+    printf 'L! /etc/resolv.conf - - - - /run/systemd/resolve/stub-resolv.conf\n' > /usr/lib/tmpfiles.d/resolv-conf.conf
+
+# COPY, not RUN echo: podman bind-mounts /etc/hostname during RUN, so a RUN write is lost.
+COPY image/files/etc/hostname /etc/hostname
+
+RUN --mount=type=tmpfs,dst=/root --mount=type=bind,source=image/shared,target=/ctx \
+    /ctx/initramfs.sh
+RUN --mount=type=bind,source=image/shared,target=/ctx \
+    sed -i 's|^HOME=.*|HOME=/var/home|' /etc/default/useradd && \
+    /ctx/bootc-rootfs.sh
+
+RUN sed -i '/^DisableSandbox$/d' /etc/pacman.conf
+
+LABEL containers.bootc=1 \
+      org.opencontainers.image.title="brahma-os" \
+      org.opencontainers.image.description="Brahma OS Desktop (developer preview)" \
+      org.opencontainers.image.licenses="Apache-2.0"
+RUN bootc container lint

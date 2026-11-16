@@ -1,0 +1,16 @@
+Brahma OS
+Copyright 2026 The Brahma authors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes work from:
+
+- bootcrew/mono (https://github.com/bootcrew/mono), Apache-2.0,
+  Copyright 2025 tulilirockz: image/Containerfile is based on its
+  arch/Containerfile; image/shared/bootc-rootfs.sh and image/shared/initramfs.sh
+  are copied from it.
+- bootc (https://github.com/bootc-dev/bootc), Apache-2.0 OR MIT, built from
+  source by bootc-builder/Containerfile.
+
+Built images contain Arch Linux and CachyOS packages, each under its own
+licence; the SBOM published with every image lists them.

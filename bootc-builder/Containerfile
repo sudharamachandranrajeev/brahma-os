@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Builds bootc once per pinned release. The result is a tiny image holding only
+# /output (bootc's install tree), which image/Containerfile copies in.
+# Rebuilt only when BOOTC_TAG changes: no working prebuilt bootc exists for Arch
+# (not in Arch or CachyOS repos, AUR fails on selinux-sys, upstream ships no
+# binaries: bootc-dev/bootc#1770).
+
+FROM docker.io/archlinux/archlinux:latest AS build
+ARG BOOTC_TAG=v1.17.4
+# 16 GB machines: full-parallel rustc with fat LTO and debuginfo gets OOM-killed.
+ENV CARGO_BUILD_JOBS=2 \
+    CARGO_PROFILE_RELEASE_DEBUG=0 \
+    CARGO_PROFILE_RELEASE_LTO=thin
+RUN pacman -Syu --noconfirm make git rust go-md2man ostree glibc pkgconf
+WORKDIR /home/build
+# Arch has no SELinux/libselinux: build without the selinux feature (documented in
+# bootc's Makefile) and skip man pages, whose generator also needs libselinux.
+RUN git clone --depth 1 --branch "${BOOTC_TAG}" https://github.com/bootc-dev/bootc.git . && \
+    make bin install-all DISABLE_DOCS=1 DESTDIR=/output \
+      CARGO_OPTIONS='--no-default-features --features install-to-disk'
+
+FROM scratch
+ARG BOOTC_TAG=v1.17.4
+COPY --from=build /output /output
+LABEL org.opencontainers.image.title="brahma-os-bootc" \
+      org.opencontainers.image.version="${BOOTC_TAG}" \
+      org.opencontainers.image.licenses="Apache-2.0 OR MIT"
