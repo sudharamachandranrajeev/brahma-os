@@ -82,7 +82,7 @@ jobs:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
 
       - name: Channel and tags
         id: tags
@@ -192,4 +192,10 @@ jobs:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           IMG: ${{ steps.push.outputs.ref }}@${{ steps.push.outputs.digest }}
-        run: cosign attest -y --key env://COSIGN_PRIVATE_KEY --type spdxjson --predicate build/sbom.spdx.json "${IMG}"
+        # The SBOM (several MB) is far over Rekor's entry size limit, so the attestation is
+        # stored only in the registry. The image signature above is still in the public log.
+        # Verify: cosign verify-attestation --key cosign.pub --type spdxjson --insecure-ignore-tlog
+        run: |
+          cosign attest -y --key env://COSIGN_PRIVATE_KEY --type spdxjson \
+            --tlog-upload=false --new-bundle-format=false --use-signing-config=false \
+            --predicate build/sbom.spdx.json "${IMG}"
